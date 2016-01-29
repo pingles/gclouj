@@ -6,8 +6,14 @@
 (def project-id "gclouj-datastore")
 
 (deftest entity-mapping
-  (let [e (entity (complete-key project-id "Foo" "name") {"FirstName" "Paul"})]
+  (let [e (entity (incomplete-key project-id "Foo")
+                  {"FirstName" "Paul"})]
     (is (= "Paul" (.getString e "FirstName")))))
+
+(deftest nested-entity-mapping
+  (let [e (entity (incomplete-key project-id "Foo")
+                  {"Address" {"City" "London"}})]
+    (is (= "London" (-> e (.getEntity "Address") (.getString "City"))))))
 
 (deftest put-and-retrieve-entity
   (let [port (LocalGcdHelper/findAvailablePort 9900)

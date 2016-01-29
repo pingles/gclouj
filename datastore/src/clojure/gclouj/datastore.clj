@@ -17,8 +17,10 @@
                                                              (number? name-or-id) :id)))
 (defmethod complete-key :name [project-id kind name] (.build (Key/builder project-id kind ^String name)))
 (defmethod complete-key :id [project-id kind id] (.build (Key/builder project-id kind ^long id)))
+
 (defn incomplete-key [project-id kind]
   (.build (IncompleteKey/builder project-id kind)))
+
 
 (defn get-entity [^Transaction txn key]
   (.get txn key))
@@ -29,7 +31,10 @@
 (defn entity [key m]
   (let [b (Entity/builder key)]
     (doseq [[k v] m]
-      (.set b k v))
+      (cond (associative? v) (let [attr-key (incomplete-key (.projectId key)
+                                                            (format "%s.%s" (.kind key) k))]
+                               (.set b k (entity attr-key v)))
+            :else            (.set b k v)))
     (.build b)))
 
 (defn transaction [service]
