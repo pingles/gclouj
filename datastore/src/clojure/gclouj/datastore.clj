@@ -1,7 +1,7 @@
 (ns gclouj.datastore
   (:require [clojure.java.io :as io])
   (:import [gclouj DatastoreOptionsFactory]
-           [com.google.gcloud.datastore DatastoreOptions Entity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key]
+           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key IncompleteKey DatastoreBatchWriter]
            [com.google.gcloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
@@ -17,9 +17,20 @@
                                                              (number? name-or-id) :id)))
 (defmethod complete-key :name [project-id kind name] (.build (Key/builder project-id kind ^String name)))
 (defmethod complete-key :id [project-id kind id] (.build (Key/builder project-id kind ^long id)))
+(defn incomplete-key [project-id kind]
+  (.build (IncompleteKey/builder project-id kind)))
 
 (defn get-entity [^Transaction txn key]
   (.get txn key))
+
+(defn add-entity [^Transaction txn entity]
+  (.add txn ^FullEntity entity))
+
+(defn entity [key m]
+  (let [b (Entity/builder key)]
+    (doseq [[k v] m]
+      (.set b k v))
+    (.build b)))
 
 (defn transaction [service]
   (.newTransaction service (into-array TransactionOption [])))
