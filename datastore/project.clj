@@ -4,4 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [com.google.gcloud/gcloud-java-datastore "0.1.3"]])
+                 [com.google.gcloud/gcloud-java-datastore "0.1.3"]]
+  :source-paths ["src/clojure"]
+  :java-source-paths ["src/java"]
+  :profiles {:dev {:global-vars {*warn-on-reflection* true}}})
