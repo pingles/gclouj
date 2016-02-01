@@ -50,3 +50,25 @@
                                 (last)
                                 (.getString "FirstName")))))))
       (.stop helper)))
+
+(deftest querying
+  (let [port   (LocalGcdHelper/findAvailablePort 9900)
+        helper (LocalGcdHelper/start project-id port)
+        s      (-> (test-options project-id port)
+                   (service))]
+    ;; create some entities to query for
+    (let [t (transaction s)]
+      (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name" "Paul"
+                                                                    "Age"  35}))
+      (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name" "Pat"
+                                                                    "Age"  30}))
+      (.commit t))
+
+    (let [nothing (query-entities s {:kind "BadKind"})
+          found   (query-entities s {:kind    "QueryFoo"
+                                     :filters [(efilter := "Name" "Paul")]})]
+      (is (= 0 (count nothing)))
+      (is (= 1 (count found)))
+      (is (= "Paul" (.getString (first found) "Name"))))
+
+    (.stop helper)))

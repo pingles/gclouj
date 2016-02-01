@@ -4,7 +4,7 @@
   (:import [gclouj DatastoreOptionsFactory]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder]
+           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter]
            [com.google.gcloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
@@ -83,3 +83,41 @@
 
 (defn transaction [service & options]
   (.newTransaction service (into-array TransactionOption [])))
+
+(defmulti efilter (fn [type & filter-expression] type))
+(defmethod efilter :ancestor [_ key]
+  (StructuredQuery$PropertyFilter/hasAncestor key))
+(defmethod efilter := [_ property value]
+  (StructuredQuery$PropertyFilter/eq property value))
+(defmethod efilter :>= [_ property value]
+  (StructuredQuery$PropertyFilter/ge property value))
+(defmethod efilter :> [_ property value]
+  (StructuredQuery$PropertyFilter/gt property value))
+(defmethod efilter :nil [_ property]
+  (StructuredQuery$PropertyFilter/isNull property))
+(defmethod efilter :<= [_ property value]
+  (StructuredQuery$PropertyFilter/le property value))
+(defmethod efilter :< [_ property value]
+  (StructuredQuery$PropertyFilter/lt property value))
+
+(defn query-filters
+  ([f1] f1)
+  ([f1 f2 & more]
+   (StructuredQuery$CompositeFilter/and f1 (into-array StructuredQuery$Filter (conj more f2)))))
+
+(defn query-entities
+  "Query can specify: kind (string) and a sequence of filters. Runner
+  can be a service or transaction. Only ancestor filters are able to be
+  run by transactions.
+  (query-entities service {:kind \"Foo\"
+                           :filters [(efilter := \"Name\" \"Paul\")]}"
+  [runner {:keys [kind filters]}]
+  (let [builder (Query/entityQueryBuilder)]
+    (when kind
+      (.kind builder kind))
+    (when (seq filters)
+      (.filter builder (apply query-filters filters)))
+    (let [query (.build builder)]
+      (iterator-seq (.run runner query)))))
+
+(defn query-keys [service])
