@@ -1,5 +1,5 @@
 (ns gclouj.bigquery
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption]))
+  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode]))
 
 (defprotocol ToClojure
   (to-clojure [_]))
@@ -57,3 +57,33 @@
       (.defaultTableLifetime builder table-lifetime-millis))
     (.location builder (or (locations location) "US"))
     (to-clojure (.create service (.build builder) (into-array BigQuery$DatasetOption [])))))
+
+(defn- mkfield [{:keys [name type description mode fields]}]
+  (let [field-type (condp = type
+                     :bool      (Field$Type/bool)
+                     :float     (Field$Type/floatingPoint)
+                     :integer   (Field$Type/integer)
+                     :string    (Field$Type/string)
+                     :timestamp (Field$Type/timestamp)
+                     :record    (Field$Type/record (map mkfield fields)))
+        builder    (Field/builder name field-type)
+        field-mode ({:nullable  (Field$Mode/NULLABLE)
+                     :repeated  (Field$Mode/REPEATED)
+                     :required  (Field$Mode/REQUIRED)} (or mode :nullable))]
+    (.mode builder field-mode)
+    (.build builder)))
+
+(defn- mkschema
+  [fields]
+  (let [builder (Schema/builder)]
+    (.fields builder (into-array Field (->> fields (map mkfield))))
+    (.build builder)))
+
+(defn create-table
+  "Fields: sequence of fields representing the table schema.
+  e.g. [{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
+  [service {:keys [project-id dataset-id table-id]} fields]
+  (let [builder (TableInfo/builder (TableId/of project-id dataset-id table-id)
+                                   (mkschema fields))
+        table-info (.build builder)]
+    (to-clojure (.create service table-info (into-array BigQuery$TableOption [])))))
