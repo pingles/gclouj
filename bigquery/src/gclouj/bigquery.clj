@@ -1,5 +1,6 @@
 (ns gclouj.bigquery
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError]))
+  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError]
+           [com.google.common.hash Hashing]))
 
 (defprotocol ToClojure
   (to-clojure [_]))
@@ -109,17 +110,26 @@
         table-info (.build builder)]
     (to-clojure (.create service table-info (into-array BigQuery$TableOption [])))))
 
-(defn crc32 [])
+(defn row-hash
+  "Creates a hash suitable for identifying duplicate rows, useful when
+  streaming to avoid inserting duplicate rows."
+  [m & {:keys [bits] :or {bits 128}}]
+  (-> (Hashing/goodFastHash bits) (.hashUnencodedChars (pr-str m)) (.toString)))
 
 (defn insert-all
-  "Performs a streaming insert of rows. row-id can be a function to return the unique identity of the row. "
+  "Performs a streaming insert of rows. row-id can be a function to
+  return the unique identity of the row (e.g. row-hash). Template suffix
+  can be used to create tables according to a template."
   [service {:keys [project-id dataset-id table-id skip-invalid? template-suffix row-id] :as table} rows]
-  (->> (InsertAllRequest/builder (TableId/of project-id dataset-id table-id)
-                                 (map (fn [row]
-                                        (if row-id
-                                          (InsertAllRequest$RowToInsert/of (row-id row) row)
-                                          (InsertAllRequest$RowToInsert/of row)))
-                                      rows))
-       (.build)
-       (.insertAll service)
-       (to-clojure)))
+  (let [builder (InsertAllRequest/builder (TableId/of project-id dataset-id table-id)
+                                          (map (fn [row]
+                                                 (if row-id
+                                                   (InsertAllRequest$RowToInsert/of (row-id row) row)
+                                                   (InsertAllRequest$RowToInsert/of row)))
+                                               rows))]
+    (when template-suffix
+      (.templateSuffix builder template-suffix))
+    (->> builder
+         (.build)
+         (.insertAll service)
+         (to-clojure))))
