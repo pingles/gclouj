@@ -4,7 +4,7 @@
   (:import [gclouj DatastoreOptionsFactory]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter]
+           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
            [com.google.gcloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
@@ -105,13 +105,19 @@
   ([f1 f2 & more]
    (StructuredQuery$CompositeFilter/and f1 (into-array StructuredQuery$Filter (conj more f2)))))
 
+(defn order-by [direction property]
+  (condp = direction
+    :desc (StructuredQuery$OrderBy/desc property)
+    :asc  (StructuredQuery$OrderBy/asc property)))
+
 (defn query-entities
   "Query can specify: kind (string) and a sequence of filters. Runner
   can be a service or transaction. Only ancestor filters are able to be
   run by transactions.
-  (query-entities service {:kind \"Foo\"
+  (query-entities service {:kind     \"Foo\"
+                           :order   [[:desc \"Age\"]]
                            :filters ['(:= \"Name\" \"Paul\")]}"
-  [runner {:keys [kind filters]}]
+  [runner {:keys [kind filters order]}]
   (let [builder (Query/entityQueryBuilder)]
     (when kind
       (.kind builder kind))
@@ -121,6 +127,10 @@
                            (apply efilter expr args))))
             query-filter (apply query-filters fs)]
         (.filter builder query-filter)))
+    (when-let [os (seq (->> order (map (fn [[direction property]]
+                                         (order-by direction property)))))]
+      (cond (= (count os) 1) (.orderBy builder (first os) (into-array StructuredQuery$OrderBy []))
+            :else            (.orderBy builder (first os) (into-array StructuredQuery$OrderBy (rest os)))))
     (let [query (.build builder)]
       (iterator-seq (.run runner query)))))
 

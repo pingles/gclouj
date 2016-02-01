@@ -71,4 +71,8 @@
       (is (= 1 (count found)))
       (is (= "Paul" (.getString (first found) "Name"))))
 
+    (let [both (query-entities s {:kind  "QueryFoo"
+                                  :order [[:desc "Age"] [:asc "Name"]]})]
+      (is (= "Paul"  (.getString (first both) "Name")))
+      (is (= "Pat"   (.getString (last both) "Name"))))
     (.stop helper)))
