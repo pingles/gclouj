@@ -110,13 +110,17 @@
   can be a service or transaction. Only ancestor filters are able to be
   run by transactions.
   (query-entities service {:kind \"Foo\"
-                           :filters [(efilter := \"Name\" \"Paul\")]}"
+                           :filters ['(:= \"Name\" \"Paul\")]}"
   [runner {:keys [kind filters]}]
   (let [builder (Query/entityQueryBuilder)]
     (when kind
       (.kind builder kind))
     (when (seq filters)
-      (.filter builder (apply query-filters filters)))
+      (let [fs (->> filters
+                    (map (fn [[expr & args]]
+                           (apply efilter expr args))))
+            query-filter (apply query-filters fs)]
+        (.filter builder query-filter)))
     (let [query (.build builder)]
       (iterator-seq (.run runner query)))))
 

@@ -66,7 +66,7 @@
 
     (let [nothing (query-entities s {:kind "BadKind"})
           found   (query-entities s {:kind    "QueryFoo"
-                                     :filters [(efilter := "Name" "Paul")]})]
+                                     :filters ['(:= "Name" "Paul")]})]
       (is (= 0 (count nothing)))
       (is (= 1 (count found)))
       (is (= "Paul" (.getString (first found) "Name"))))
