@@ -1,5 +1,5 @@
 (ns gclouj.bigquery
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId]))
+  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption]))
 
 (defprotocol ToClojure
   (to-clojure [_]))
@@ -44,3 +44,16 @@
                             (into-array BigQuery$TableListOption []))
                (.iterateAll))]
     (map to-clojure (iterator-seq it))))
+
+(defn create-dataset [service {:keys [project-id dataset-id friendly-name location description table-lifetime-millis] :as dataset}]
+  (let [locations {:eu "EU"
+                   :us "US"}
+        builder   (DatasetInfo/builder project-id dataset-id)]
+    (when friendly-name
+      (.friendlyName builder friendly-name))
+    (when description
+      (.description builder description))
+    (when table-lifetime-millis
+      (.defaultTableLifetime builder table-lifetime-millis))
+    (.location builder (or (locations location) "US"))
+    (to-clojure (.create service (.build builder) (into-array BigQuery$DatasetOption [])))))
