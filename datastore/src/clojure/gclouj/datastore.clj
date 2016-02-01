@@ -42,6 +42,9 @@
 (defn delete-entity [^Transaction txn & keys]
   (.delete txn (into-array Key keys)))
 
+(defn update-entity [^Transaction txn & entities]
+  (.update txn (into-array Entity entities)))
+
 (defn byte-array? [x]
   (= (Class/forName "[B") (class x)))
 
@@ -69,10 +72,21 @@
             :else    (.set builder k (property-value v))))
     (.build builder)))
 
-
 (defprotocol ToClojure
   (to-clojure [x]))
 (extend-protocol ToClojure
+  BlobValue
+  (to-clojure [value] (.. value asReadOnlyByteBuffer))
+  BooleanValue
+  (to-clojure [value] (.get value))
+  DateTimeValue
+  (to-clojure [value] (.get value))
+  DoubleValue
+  (to-clojure [value] (.get value))
+  KeyValue
+  (to-clojure [value] (.get value))
+  NullValue
+  (to-clojure [value] nil)
   LongValue
   (to-clojure [value] (.get value))
   StringValue

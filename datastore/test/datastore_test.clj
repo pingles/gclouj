@@ -95,19 +95,34 @@
                                  :query-type :key))))
     (.stop helper)))
 
-(deftest add-delete-entity
+(deftest add-update-delete-entity
   (let [port   (LocalGcdHelper/findAvailablePort 9900)
         helper (LocalGcdHelper/start project-id port)
         s      (-> (test-options project-id port)
                    (service))]
 
     (let [t     (transaction s)
-          added (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name" "Paul"
-                                                                              "Age"  35}))]
+          added (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name"     "Paul"
+                                                                              "Age"      35
+                                                                              "Location" {"City" "London"}}))]
       (.commit t)
       (let [t2 (transaction s)]
-        (delete-entity t2 (.key added))
-        (.commit t2)))
+        (is (= {"Name" "Paul"
+                "Age"  35
+                "Location" {"City" "London"}} (to-clojure added)))
+        (update-entity t2 (entity (.key added)
+                                  (-> (to-clojure added)
+                                      (assoc "Age" 36)
+                                      (update-in ["Location" "City"] (constantly "Hong Kong")))))
+        (.commit t2))
+
+      (let [updated (get-entity (transaction s) (.key added))]
+        (is (= 36 (.getLong updated "Age")))
+        (is (= "Hong Kong" (-> updated (.getEntity "Location") (.getString "City")))))
+
+      (let [t3 (transaction s)]
+        (delete-entity t3 (.key added))
+        (.commit t3)))
 
     (is (= 0 (count (query s {:kind "QueryFoo"}))))
     (.stop helper)))
