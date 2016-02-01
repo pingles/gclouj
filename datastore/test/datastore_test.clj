@@ -94,3 +94,20 @@
                                   :limit 1}
                                  :query-type :key))))
     (.stop helper)))
+
+(deftest add-delete-entity
+  (let [port   (LocalGcdHelper/findAvailablePort 9900)
+        helper (LocalGcdHelper/start project-id port)
+        s      (-> (test-options project-id port)
+                   (service))]
+
+    (let [t     (transaction s)
+          added (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name" "Paul"
+                                                                              "Age"  35}))]
+      (.commit t)
+      (let [t2 (transaction s)]
+        (delete-entity t2 (.key added))
+        (.commit t2)))
+
+    (is (= 0 (count (query s {:kind "QueryFoo"}))))
+    (.stop helper)))

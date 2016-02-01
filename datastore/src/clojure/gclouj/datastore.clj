@@ -39,6 +39,9 @@
 (defn add-entity [^Transaction txn entity]
   (.add txn ^FullEntity entity))
 
+(defn delete-entity [^Transaction txn & keys]
+  (.delete txn (into-array Key keys)))
+
 (defn byte-array? [x]
   (= (Class/forName "[B") (class x)))
 
