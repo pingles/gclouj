@@ -1,5 +1,5 @@
 (ns gclouj.bigquery
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode]))
+  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError]))
 
 (defprotocol ToClojure
   (to-clojure [_]))
@@ -18,6 +18,10 @@
   (to-clojure [x] {:dataset-id (.dataset x)
                    :project-id (.project x)
                    :table-id   (.table x)})
+  TableInfo$StreamingBuffer
+  (to-clojure [x] {:estimated-bytes   (.estimatedBytes x)
+                   :estimated-rows    (.estimatedRows x)
+                   :oldest-entry-time (.oldestEntryTime x)})
   TableInfo
   (to-clojure [x] {:location           (.location x)
                    :friendly-name      (.friendlyName x)
@@ -27,7 +31,19 @@
                    :creation-time      (.creationTime x)
                    :expiration-time    (.expirationTime x)
                    :last-modified-time (.lastModifiedTime x)
-                   :table-id           (to-clojure (.tableId x))}))
+                   :streaming-buffer   (when-let [sb (.streamingBuffer x)]
+                                         (to-clojure sb))
+                   :table-id           (to-clojure (.tableId x))})
+  BigQueryError
+  (to-clojure [x] {:reason   (.reason x)
+                   :location (.location x)
+                   :message  (.message x)})
+  InsertAllResponse
+  (to-clojure [x] {:errors (->> (.insertErrors x)
+                                (map (fn [[idx errors]]
+                                       {:index  idx
+                                        :errors (map to-clojure errors)}))
+                                (seq))}))
 
 (defn service
   ([] (.service (BigQueryOptions/defaultInstance))))
@@ -44,6 +60,11 @@
                             (into-array BigQuery$TableListOption []))
                (.iterateAll))]
     (map to-clojure (iterator-seq it))))
+
+(defn table [service {:keys [project-id dataset-id table-id] :as table}]
+  (to-clojure (.getTable service
+                         (TableId/of project-id dataset-id table-id)
+                         (into-array BigQuery$TableOption []))))
 
 (defn create-dataset [service {:keys [project-id dataset-id friendly-name location description table-lifetime-millis] :as dataset}]
   (let [locations {:eu "EU"
@@ -82,8 +103,23 @@
 (defn create-table
   "Fields: sequence of fields representing the table schema.
   e.g. [{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
-  [service {:keys [project-id dataset-id table-id]} fields]
+  [service {:keys [project-id dataset-id table-id] :as table} fields]
   (let [builder (TableInfo/builder (TableId/of project-id dataset-id table-id)
                                    (mkschema fields))
         table-info (.build builder)]
     (to-clojure (.create service table-info (into-array BigQuery$TableOption [])))))
+
+(defn crc32 [])
+
+(defn insert-all
+  "Performs a streaming insert of rows. row-id can be a function to return the unique identity of the row. "
+  [service {:keys [project-id dataset-id table-id skip-invalid? template-suffix row-id] :as table} rows]
+  (->> (InsertAllRequest/builder (TableId/of project-id dataset-id table-id)
+                                 (map (fn [row]
+                                        (if row-id
+                                          (InsertAllRequest$RowToInsert/of (row-id row) row)
+                                          (InsertAllRequest$RowToInsert/of row)))
+                                      rows))
+       (.build)
+       (.insertAll service)
+       (to-clojure)))
