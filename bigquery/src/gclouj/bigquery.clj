@@ -1,6 +1,12 @@
 (ns gclouj.bigquery
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError]
+  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute]
            [com.google.common.hash Hashing]))
+
+
+(defmulti field-value->clojure (fn [attribute val]
+                                 attribute))
+(defmethod field-value->clojure FieldValue$Attribute/PRIMITIVE [_ ^FieldValue val]
+  (.value val))
 
 (defprotocol ToClojure
   (to-clojure [_]))
@@ -44,7 +50,33 @@
                                 (map (fn [[idx errors]]
                                        {:index  idx
                                         :errors (map to-clojure errors)}))
-                                (seq))}))
+                                (seq))})
+  JobId
+  (to-clojure [x] {:project-id (.project x)
+                   :job-id     (.job x)})
+  Field
+  (to-clojure [x] {:name (.name x)
+                   :mode ({Field$Mode/NULLABLE :nullable
+                           Field$Mode/REPEATED :repeated
+                           Field$Mode/REQUIRED :required} (.mode x))
+                   :type ({Field$Type$Value/BOOLEAN   :bool
+                           Field$Type$Value/FLOAT     :float
+                           Field$Type$Value/INTEGER   :integer
+                           Field$Type$Value/RECORD    :record
+                           Field$Type$Value/STRING    :string
+                           Field$Type$Value/TIMESTAMP :timestamp} (.. x type value))})
+  FieldValue
+  (to-clojure [x] (field-value->clojure (.attribute x) x))
+  Schema
+  (to-clojure [x] (map to-clojure (.fields x)))
+  QueryResponse
+  (to-clojure [x] {:completed? (.jobCompleted x)
+                   :errors     (->> (.executionErrors x) (map to-clojure) (seq))
+                   :job-id     (to-clojure (.jobId x))
+                   :results    (map (fn [fields] (map to-clojure fields))
+                                    (iterator-seq (.. x result iterateAll)))
+                   :schema     (to-clojure (.. x result schema))
+                   :cache-hit  (.. x result cacheHit)}))
 
 (defn service
   ([] (.service (BigQueryOptions/defaultInstance))))
@@ -80,6 +112,14 @@
     (.location builder (or (locations location) "US"))
     (to-clojure (.create service (.build builder) (into-array BigQuery$DatasetOption [])))))
 
+(defn delete-dataset [service {:keys [project-id dataset-id delete-contents?] :as dataset}]
+  (let [options (if delete-contents?
+                  [(BigQuery$DatasetDeleteOption/deleteContents)]
+                  [])]
+    (.delete service
+             (DatasetId/of project-id dataset-id)
+             (into-array BigQuery$DatasetDeleteOption options))))
+
 (defn- mkfield [{:keys [name type description mode fields]}]
   (let [field-type (condp = type
                      :bool      (Field$Type/bool)
@@ -110,6 +150,10 @@
         table-info (.build builder)]
     (to-clojure (.create service table-info (into-array BigQuery$TableOption [])))))
 
+(defn delete-table
+  [service {:keys [project-id dataset-id table-id] :as table}]
+  (.delete service (TableId/of project-id dataset-id table-id)))
+
 (defn row-hash
   "Creates a hash suitable for identifying duplicate rows, useful when
   streaming to avoid inserting duplicate rows."
@@ -133,3 +177,19 @@
          (.build)
          (.insertAll service)
          (to-clojure))))
+
+
+
+(defn query [service query {:keys [project-id dataset-id] :as dataset} {:keys [max-results dry-run? max-wait-millis use-cache?] :as query-opts}]
+  (let [builder (QueryRequest/builder query)]
+    (.defaultDataset builder (DatasetId/of project-id dataset-id))
+    (when max-results
+      (.maxResults builder max-results))
+    (when dry-run?
+      (.dryRun builder dry-run?))
+    (when max-wait-millis
+      (.maxWaitTime builder max-wait-millis))
+    (when use-cache?
+      (.useQueryCache builder use-cache?))
+    (let [q (.build builder)]
+      (to-clojure (.query service q)))))
