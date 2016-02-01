@@ -42,7 +42,7 @@
 (defn byte-array? [x]
   (= (Class/forName "[B") (class x)))
 
-(defn attrvalue [x]
+(defn property-value [x]
   (cond (nil? x)                      (NullValue. )
         (float? x)                    (DoubleValue/of x)
         (number? x)                   (LongValue/of x)
@@ -57,13 +57,13 @@
 
 (defn entity
   "Converts a Clojure map into a Datastore Entity. Recursively converts
-  all values into an entity or value using attrvalue."
-  [key m]
+  all values into an entity or value using property-value. "
+  [key m & {:keys [index]}]
   (let [builder    (Entity/builder key)]
     (doseq [[k v] m]
       (cond (map? v) (let [attrkey (incomplete-key (.projectId key) (format "%s.%s" (.kind key) k))]
                        (.set builder k (entity attrkey v)))
-            :else    (.set builder k (attrvalue v))))
+            :else    (.set builder k (property-value v))))
     (.build builder)))
 
 
@@ -110,15 +110,19 @@
     :desc (StructuredQuery$OrderBy/desc property)
     :asc  (StructuredQuery$OrderBy/asc property)))
 
-(defn query-entities
+(defn query
   "Query can specify: kind (string) and a sequence of filters. Runner
   can be a service or transaction. Only ancestor filters are able to be
   run by transactions.
-  (query-entities service {:kind     \"Foo\"
-                           :order   [[:desc \"Age\"]]
-                           :filters ['(:= \"Name\" \"Paul\")]}"
-  [runner {:keys [kind filters order]}]
-  (let [builder (Query/entityQueryBuilder)]
+  (query service {:kind \"Foo\"
+                  :order   [[:desc \"Age\"]]
+                  :filters ['(:= \"Name\" \"Paul\")]}"
+  [runner {:keys [kind filters order limit offset]} & {:keys [query-type]
+                                                       :or   {query-type :entity}}]
+  {:pre [(contains? #{:entity :key} query-type)]}
+  (let [builder (condp = query-type
+                  :entity (Query/entityQueryBuilder)
+                  :key    (Query/keyQueryBuilder))]
     (when kind
       (.kind builder kind))
     (when (seq filters)
@@ -131,7 +135,9 @@
                                          (order-by direction property)))))]
       (cond (= (count os) 1) (.orderBy builder (first os) (into-array StructuredQuery$OrderBy []))
             :else            (.orderBy builder (first os) (into-array StructuredQuery$OrderBy (rest os)))))
+    (when limit
+      (.limit builder (int limit)))
+    (when offset
+      (.offset builder (int offset)))
     (let [query (.build builder)]
       (iterator-seq (.run runner query)))))
-
-(defn query-keys [service])

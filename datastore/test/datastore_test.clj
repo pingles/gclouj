@@ -1,6 +1,6 @@
 (ns datastore-test
   (:import [com.google.gcloud.datastore.testing LocalGcdHelper]
-           [com.google.gcloud.datastore NullValue Entity])
+           [com.google.gcloud.datastore NullValue Entity Key])
   (:require [gclouj.datastore :refer :all]
             [clojure.test :refer :all]))
 
@@ -64,15 +64,33 @@
                                                                     "Age"  30}))
       (.commit t))
 
-    (let [nothing (query-entities s {:kind "BadKind"})
-          found   (query-entities s {:kind    "QueryFoo"
-                                     :filters ['(:= "Name" "Paul")]})]
+    (let [nothing (query s {:kind "BadKind"})
+          found   (query s {:kind    "QueryFoo"
+                            :filters ['(:= "Name" "Paul")]})]
       (is (= 0 (count nothing)))
       (is (= 1 (count found)))
       (is (= "Paul" (.getString (first found) "Name"))))
 
-    (let [both (query-entities s {:kind  "QueryFoo"
-                                  :order [[:desc "Age"] [:asc "Name"]]})]
+    (let [both (query s {:kind  "QueryFoo"
+                         :order [[:desc "Age"] [:asc "Name"]]})]
       (is (= "Paul"  (.getString (first both) "Name")))
       (is (= "Pat"   (.getString (last both) "Name"))))
+
+    (is (= "Paul" (-> (query s {:kind "QueryFoo"
+                                :order [[:desc "Age"]]
+                                :limit 1})
+                      (first)
+                      (.getString "Name"))))
+    (is (= "Pat" (-> (query s {:kind "QueryFoo"
+                               :order [[:desc "Age"]]
+                               :offset 1
+                               :limit 1})
+                     (first)
+                     (.getString "Name"))))
+    (is (instance? Key
+                   (first (query s
+                                 {:kind "QueryFoo"
+                                  :order [[:desc "Age"]]
+                                  :limit 1}
+                                 :query-type :key))))
     (.stop helper)))
