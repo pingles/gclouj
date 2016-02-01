@@ -13,8 +13,12 @@
 (defn test-options [project-id port]
   (DatastoreOptionsFactory/createTestOptions project-id port))
 
-(defn service [options]
-  (.service options))
+(defn service
+  "Creates the Datastore service to be used with other functions. Use
+  options when connecting outside of the Google Cloud Platform, if
+  you're running on GCE/GAE you can use the no-args version."
+  ([] (.service (DatastoreOptions/defaultInstance)))
+  ([options] (.service options)))
 
 (defmulti complete-key (fn [project-id kind name-or-id] (cond (string? name-or-id) :name
                                                              (number? name-or-id) :id)))
