@@ -1,7 +1,7 @@
 (ns gclouj.bigquery
   (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute]
            [com.google.common.hash Hashing]
-           [java.util List]))
+           [java.util List Collections]))
 
 
 (defmulti field-value->clojure (fn [attribute val]
@@ -167,7 +167,7 @@
   ;; correctly.
   (letfn [(wrap-map [x]
             (if (map? x)
-              (java.util.Collections/unmodifiableMap x)
+              (Collections/unmodifiableMap x)
               x))]
     (clojure.walk/postwalk wrap-map m)))
 
