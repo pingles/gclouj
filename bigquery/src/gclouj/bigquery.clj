@@ -1,5 +1,5 @@
 (ns gclouj.bigquery
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute]
+  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadJobInfo LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions]
            [com.google.common.hash Hashing]
            [java.util List Collections]))
 
@@ -77,7 +77,26 @@
                    :results    (map (fn [fields] (map to-clojure fields))
                                     (iterator-seq (.. x result iterateAll)))
                    :schema     (to-clojure (.. x result schema))
-                   :cache-hit  (.. x result cacheHit)}))
+                   :cache-hit  (.. x result cacheHit)})
+  JobStatistics$LoadStatistics
+  (to-clojure [x] {:input-bytes  (.inputBytes x)
+                   :input-files  (.inputFiles x)
+                   :output-bytes (.outputBytes x)
+                   :output-rows  (.outputRows x)})
+  JobStatistics
+  (to-clojure [x] {:created (.creationTime x)
+                   :end     (.endTime x)
+                   :started (.startTime x)})
+  JobStatus
+  (to-clojure [x] {:state  ({JobStatus$State/DONE    :done
+                             JobStatus$State/PENDING :pending
+                             JobStatus$State/RUNNING :running} (.state x))
+                   :errors (seq (map to-clojure (.executionErrors x)))})
+  LoadJobInfo
+  (to-clojure [x] {:job-id     (to-clojure (.jobId x))
+                   :statistics (to-clojure (.statistics x))
+                   :email      (.userEmail x)
+                   :status     (to-clojure (.status x))}))
 
 (defn service
   ([] (.service (BigQueryOptions/defaultInstance))))
@@ -205,3 +224,22 @@
       (.useQueryCache builder use-cache?))
     (let [q (.build builder)]
       (to-clojure (.query service q)))))
+
+
+
+(defn job [service {:keys [project-id job-id] :as job}]
+  (to-clojure (.getJob service (JobId/of project-id job-id) (into-array BigQuery$JobOption []))))
+
+
+(defn load-job [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition]} & uris]
+  (let [config-builder (LoadConfiguration/builder (TableId/of project-id dataset-id table-id)
+                                                  ({:json (FormatOptions/json)
+                                                    :csv  (FormatOptions/csv)} (or format :json)))]
+    (.createDisposition config-builder ({:needed JobInfo$CreateDisposition/CREATE_IF_NEEDED
+                                         :never JobInfo$CreateDisposition/CREATE_NEVER} (or create-disposition :never)))
+    (.writeDisposition config-builder ({:append JobInfo$WriteDisposition/WRITE_APPEND
+                                        :empty  JobInfo$WriteDisposition/WRITE_EMPTY
+                                        :truncate JobInfo$WriteDisposition/WRITE_TRUNCATE} (or write-disposition :append)))
+    (let [configuration (.build config-builder)
+          job           (.build (LoadJobInfo/builder configuration ^List uris))]
+      (to-clojure (.create service job (into-array BigQuery$JobOption []))))))
