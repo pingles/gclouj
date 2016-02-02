@@ -1,4 +1,5 @@
 (ns gclouj.bigquery
+  (:require [clojure.walk :as walk])
   (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadJobInfo LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions]
            [com.google.common.hash Hashing]
            [java.util List Collections]))
@@ -188,7 +189,7 @@
             (if (map? x)
               (Collections/unmodifiableMap x)
               x))]
-    (clojure.walk/postwalk wrap-map m)))
+    (walk/postwalk wrap-map m)))
 
 (defn- insert-row [row-id row]
   (if row-id
