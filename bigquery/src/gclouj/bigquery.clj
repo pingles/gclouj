@@ -1,6 +1,7 @@
 (ns gclouj.bigquery
   (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute]
-           [com.google.common.hash Hashing]))
+           [com.google.common.hash Hashing]
+           [java.util List]))
 
 
 (defmulti field-value->clojure (fn [attribute val]
@@ -127,7 +128,7 @@
                      :integer   (Field$Type/integer)
                      :string    (Field$Type/string)
                      :timestamp (Field$Type/timestamp)
-                     :record    (Field$Type/record (map mkfield fields)))
+                     :record    (Field$Type/record ^List (map mkfield fields)))
         builder    (Field/builder name field-type)
         field-mode ({:nullable  (Field$Mode/NULLABLE)
                      :repeated  (Field$Mode/REPEATED)
@@ -160,17 +161,28 @@
   [m & {:keys [bits] :or {bits 128}}]
   (-> (Hashing/goodFastHash bits) (.hashUnencodedChars (pr-str m)) (.toString)))
 
+(defn- row-value [m]
+  ;; the google client incorrectly interprets clojure maps as arrays so
+  ;; we wrap in an unmodifiableMap to ensure the client interprets
+  ;; correctly.
+  (letfn [(wrap-map [x]
+            (if (map? x)
+              (java.util.Collections/unmodifiableMap x)
+              x))]
+    (clojure.walk/postwalk wrap-map m)))
+
+(defn- insert-row [row-id row]
+  (if row-id
+    (InsertAllRequest$RowToInsert/of (row-id row) (row-value row))
+    (InsertAllRequest$RowToInsert/of (row-value row))))
+
 (defn insert-all
   "Performs a streaming insert of rows. row-id can be a function to
   return the unique identity of the row (e.g. row-hash). Template suffix
   can be used to create tables according to a template."
   [service {:keys [project-id dataset-id table-id skip-invalid? template-suffix row-id] :as table} rows]
   (let [builder (InsertAllRequest/builder (TableId/of project-id dataset-id table-id)
-                                          (map (fn [row]
-                                                 (if row-id
-                                                   (InsertAllRequest$RowToInsert/of (row-id row) row)
-                                                   (InsertAllRequest$RowToInsert/of row)))
-                                               rows))]
+                                          ^Iterable (map (partial insert-row row-id) rows))]
     (when template-suffix
       (.templateSuffix builder template-suffix))
     (->> builder
