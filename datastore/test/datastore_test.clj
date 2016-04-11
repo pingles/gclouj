@@ -26,7 +26,7 @@
 
   (deftest put-and-retrieve-entity
     (let [port (LocalGcdHelper/findAvailablePort 9900)
-          helper (LocalGcdHelper/start project-id port)]
+          helper (LocalGcdHelper/start project-id port 1.0)]
       (let [opts (test-options project-id port)
             s    (service opts)
             t    (transaction s)]
@@ -53,7 +53,7 @@
 
 (deftest querying
   (let [port   (LocalGcdHelper/findAvailablePort 9900)
-        helper (LocalGcdHelper/start project-id port)
+        helper (LocalGcdHelper/start project-id port 1.0)
         s      (-> (test-options project-id port)
                    (service))]
     ;; create some entities to query for
@@ -97,7 +97,7 @@
 
 (deftest add-update-delete-entity
   (let [port   (LocalGcdHelper/findAvailablePort 9900)
-        helper (LocalGcdHelper/start project-id port)
+        helper (LocalGcdHelper/start project-id port 1.0)
         s      (-> (test-options project-id port)
                    (service))]
 

@@ -4,7 +4,7 @@
   (:import [gclouj DatastoreOptionsFactory]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction TransactionOption Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
+           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
            [com.google.gcloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
@@ -98,8 +98,8 @@
     (let [names (-> entity (.names) (.iterator) (iterator-seq))]
       (into {} (map (fn [attr] [attr (to-clojure (.getValue entity attr))]) names)))))
 
-(defn transaction [service & options]
-  (.newTransaction service (into-array TransactionOption [])))
+(defn transaction [service]
+  (.newTransaction service))
 
 (defmulti efilter (fn [type & filter-expression] type))
 (defmethod efilter :ancestor [_ key]
