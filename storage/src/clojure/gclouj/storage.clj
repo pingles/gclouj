@@ -1,6 +1,6 @@
 (ns gclouj.storage
   (:import [com.google.cloud AuthCredentials]
-           [com.google.cloud.storage StorageOptions Storage$BlobListOption Storage$BucketListOption Bucket Blob BlobId Storage$SignUrlOption Storage$BlobSourceOption]
+           [com.google.cloud.storage StorageOptions Storage$BlobListOption Storage$BucketListOption Bucket Blob BlobId Storage$SignUrlOption Storage$BlobSourceOption BlobInfo Storage$BlobWriteOption]
            [gclouj StorageOptionsFactory]
            [java.util.concurrent TimeUnit]
            [java.nio.channels Channels])
@@ -16,8 +16,9 @@
   BlobId
   (to-clojure [id] {:bucket (.bucket id)
                     :name   (.name id)})
-  Blob
+  BlobInfo
   (to-clojure [blob] {:id                  (to-clojure (.blobId blob))
+                      :cache-control       (.cacheControl blob)
                       :content-disposition (.contentDisposition blob)
                       :content-encoding    (.contentEncoding blob)
                       :content-language    (.contentLanguage blob)
@@ -68,3 +69,31 @@
   [service {:keys [bucket name] :as blob-id}]
   (when-let [reader (.reader service (BlobId/of bucket name) (into-array Storage$BlobSourceOption []))]
     (Channels/newInputStream reader)))
+
+
+(defn- blob-info [{:keys [bucket name cache-control content-disposition content-encoding content-language content-type metadata]}]
+  (let [b (BlobInfo/builder (BlobId/of bucket name))]
+    (when cache-control
+      (.cacheControl b cache-control))
+    (when content-disposition
+      (.contentDisposition b content-disposition))
+    (when content-encoding
+      (.contentEncoding b content-encoding))
+    (when content-language
+      (.contentLanguage b content-language))
+    (when content-type
+      (.contentType b content-type))
+    (when metadata
+      (.metadata b metadata))
+    (.build b)))
+
+(defn- write-options [options]
+  (let [opts {:does-not-exist (Storage$BlobWriteOption/doesNotExist)}]
+    (->> options (map opts) (into-array Storage$BlobWriteOption))))
+
+(defn create-blob
+  "Creates a blob. blob should be a map with at least :bucket
+  and :name (for other keys, see blob-info fn).
+  Will succeed even if blob already exists- to fail if the blob already exists, "
+  [service blob input-stream & opts]
+  (to-clojure (.create service (blob-info blob) input-stream (write-options opts))))
