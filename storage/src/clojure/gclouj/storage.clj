@@ -97,3 +97,10 @@
   Will succeed even if blob already exists- to fail if the blob already exists, "
   [service blob input-stream & opts]
   (to-clojure (.create service (blob-info blob) input-stream (write-options opts))))
+
+
+(defn delete-blob
+  "Deletes a blob. Returns boolean indicating if it was deleted
+  successfully."
+  [service {:keys [bucket name] :as blob-id}]
+  (.delete service (BlobId/of bucket name)))
