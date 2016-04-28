@@ -1,6 +1,6 @@
 (ns gclouj.bigquery
   (:require [clojure.walk :as walk])
-  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table]
+  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption]
            [com.google.common.hash Hashing]
            [java.util List Collections]))
 
@@ -73,13 +73,17 @@
   Schema
   (to-clojure [x] (map to-clojure (.fields x)))
   QueryResponse
-  (to-clojure [x] {:completed? (.jobCompleted x)
-                   :errors     (->> (.executionErrors x) (map to-clojure) (seq))
-                   :job-id     (to-clojure (.jobId x))
-                   :results    (map (fn [fields] (map to-clojure fields))
-                                    (iterator-seq (.. x result iterateAll)))
-                   :schema     (to-clojure (.. x result schema))
-                   :cache-hit  (.. x result cacheHit)})
+  (to-clojure [x] (let [completed (.jobCompleted x)]
+                    {:completed? completed
+                     :errors     (->> (.executionErrors x) (map to-clojure) (seq))
+                     :job-id     (to-clojure (.jobId x))
+                     :results    (when completed
+                                   (map (fn [fields] (map to-clojure fields))
+                                        (iterator-seq (.. x result iterateAll))))
+                     :schema     (when completed
+                                   (to-clojure (.. x result schema)))
+                     :cache-hit  (when completed
+                                   (.. x result cacheHit))}))
   JobStatistics$LoadStatistics
   (to-clojure [x] {:input-bytes  (.inputBytes x)
                    :input-files  (.inputFiles x)
@@ -213,7 +217,13 @@
 
 
 
-(defn query [service query {:keys [max-results dry-run? max-wait-millis use-cache? default-dataset] :as query-opts}]
+(defn query
+  "Executes a query. BigQuery will create a Query Job and block for the
+  specified timeout. If the query returns within the time the results
+  will be returned. Otherwise, results need to be retrieved separately
+  using query-results. Status of the job can be checked using the job
+  function, and checking completed?"
+  [service query {:keys [max-results dry-run? max-wait-millis use-cache? default-dataset] :as query-opts}]
   (let [builder (QueryRequest/builder query)]
     (when default-dataset
       (let [{:keys [project-id dataset-id]} default-dataset]
@@ -230,8 +240,28 @@
 
 
 
+
+(defmulti query-option (fn [[type _]] type))
+(defmethod query-option :max-wait-millis [[_ val]] (BigQuery$QueryResultsOption/maxWaitTime val))
+(defmethod query-option :page-size [[_ val]] (BigQuery$QueryResultsOption/pageSize val))
+(defmethod query-option :page-token [[_ val]] (BigQuery$QueryResultsOption/pageToken val))
+
+(defn query-results
+  "Retrieves results for a Query job. Will throw exceptions unless Job
+  has completed successfully. Check using job and completed? functions."
+  [service {:keys [project-id job-id] :as job} & {:keys [max-wait-millis page-size page-token] :as opts}]
+  {:pre [(string? job-id) (string? project-id)]}
+  (to-clojure (.getQueryResults service
+                                (JobId/of project-id job-id)
+                                (->> opts (map query-option) (into-array BigQuery$QueryResultsOption)))))
+
+
 (defn job [service {:keys [project-id job-id] :as job}]
   (to-clojure (.getJob service (JobId/of project-id job-id) (into-array BigQuery$JobOption []))))
+
+(defn completed? [job]
+  (and (= :done (get-in job [:status :state]))
+       (empty? (get-in job [:status :errors]))))
 
 (def create-dispositions {:needed JobInfo$CreateDisposition/CREATE_IF_NEEDED
                           :never  JobInfo$CreateDisposition/CREATE_NEVER})
