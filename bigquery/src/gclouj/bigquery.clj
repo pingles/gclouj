@@ -1,8 +1,10 @@
 (ns gclouj.bigquery
-  (:require [clojure.walk :as walk])
-  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption]
+  (:require [clojure.walk :as walk]
+            [clj-time.coerce :as tc])
+  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo]
            [com.google.common.hash Hashing]
-           [java.util List Collections]))
+           [java.util List Collections]
+           [java.util.concurrent TimeUnit]))
 
 
 (defmulti field-value->clojure (fn [attribute val]
@@ -243,18 +245,44 @@
 
 (defmulti query-option (fn [[type _]] type))
 (defmethod query-option :max-wait-millis [[_ val]] (BigQuery$QueryResultsOption/maxWaitTime val))
-(defmethod query-option :page-size [[_ val]] (BigQuery$QueryResultsOption/pageSize val))
-(defmethod query-option :page-token [[_ val]] (BigQuery$QueryResultsOption/pageToken val))
 
 (defn query-results
   "Retrieves results for a Query job. Will throw exceptions unless Job
   has completed successfully. Check using job and completed? functions."
-  [service {:keys [project-id job-id] :as job} & {:keys [max-wait-millis page-size page-token] :as opts}]
+  [service {:keys [project-id job-id] :as job} & {:keys [max-wait-millis] :as opts}]
   {:pre [(string? job-id) (string? project-id)]}
   (to-clojure (.getQueryResults service
                                 (JobId/of project-id job-id)
                                 (->> opts (map query-option) (into-array BigQuery$QueryResultsOption)))))
 
+(defn- parse-timestamp [val]
+  (let [seconds (long (Double/valueOf val))
+        millis  (.toMillis (TimeUnit/SECONDS) seconds)]
+    (tc/from-long millis)))
+
+(def cell-coercions {:integer   #(Long/valueOf %)
+                     :bool      #(Boolean/valueOf %)
+                     :float     #(Double/valueOf %)
+                     :string    identity
+                     :timestamp parse-timestamp})
+
+(defn- coerce-result
+  [schema]
+  (let [coercions (map cell-coercions (map :type schema))
+        names     (map :names schema)]
+    (fn [row]
+      (for [[coerce value] (partition 2 (interleave coercions row))]
+        (coerce value)))))
+
+(defn query-results-seq
+  "Takes a query result and coerces the results from being raw sequences
+  into maps according to the schema and coercing values according to
+  their type. e.g.:
+  converts from query results of: {:results ((\"500\")) :schema ({:name \"col\" :type :integer})} into...
+  ({\"col\" 500} ...)"
+  [results]
+  (let [{:keys [results schema]} results]
+    (map (coerce-result schema) results)))
 
 (defn job [service {:keys [project-id job-id] :as job}]
   (to-clojure (.getJob service (JobId/of project-id job-id) (into-array BigQuery$JobOption []))))
