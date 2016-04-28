@@ -1,6 +1,6 @@
 (ns gclouj.bigquery
   (:require [clojure.walk :as walk])
-  (:import [com.google.gcloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption TableInfo TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode TableInfo$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadJobInfo LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions QueryJobInfo QueryJobInfo$Priority UserDefinedFunction]
+  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table]
            [com.google.common.hash Hashing]
            [java.util List Collections]))
 
@@ -27,22 +27,23 @@
   (to-clojure [x] {:dataset-id (.dataset x)
                    :project-id (.project x)
                    :table-id   (.table x)})
-  TableInfo$StreamingBuffer
+  StandardTableDefinition$StreamingBuffer
   (to-clojure [x] {:estimated-bytes   (.estimatedBytes x)
                    :estimated-rows    (.estimatedRows x)
                    :oldest-entry-time (.oldestEntryTime x)})
-  TableInfo
-  (to-clojure [x] {:location           (.location x)
-                   :friendly-name      (.friendlyName x)
-                   :description        (.description x)
-                   :bytes              (.numBytes x)
-                   :rows               (.numRows x)
-                   :creation-time      (.creationTime x)
-                   :expiration-time    (.expirationTime x)
-                   :last-modified-time (.lastModifiedTime x)
-                   :streaming-buffer   (when-let [sb (.streamingBuffer x)]
-                                         (to-clojure sb))
-                   :table-id           (to-clojure (.tableId x))})
+  StandardTableDefinition
+  (to-clojure [x] {:location          (.location x)
+                   :bytes             (.numBytes x)
+                   :rows              (.numRows x)
+                   :streaming-buffer  (when-let [sb (.streamingBuffer x)]
+                                        (to-clojure sb))
+                   :schema            (to-clojure (.schema x))})
+  Table
+  (to-clojure [x] {:creation-time (.creationTime x)
+                   :description   (.description x)
+                   :friendly-name (.friendlyName x)
+                   :table-id      (to-clojure (.tableId x))
+                   :definition    (to-clojure (.definition x))})
   BigQueryError
   (to-clojure [x] {:reason   (.reason x)
                    :location (.location x)
@@ -93,12 +94,7 @@
                              JobStatus$State/PENDING :pending
                              JobStatus$State/RUNNING :running} (.state x))
                    :errors (seq (map to-clojure (.executionErrors x)))})
-  LoadJobInfo
-  (to-clojure [x] {:job-id     (to-clojure (.jobId x))
-                   :statistics (to-clojure (.statistics x))
-                   :email      (.userEmail x)
-                   :status     (to-clojure (.status x))})
-  QueryJobInfo
+  JobInfo
   (to-clojure [x] {:job-id     (to-clojure (.jobId x))
                    :statistics (to-clojure (.statistics x))
                    :email      (.userEmail x)
@@ -172,7 +168,7 @@
   e.g. [{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
   [service {:keys [project-id dataset-id table-id] :as table} fields]
   (let [builder (TableInfo/builder (TableId/of project-id dataset-id table-id)
-                                   (mkschema fields))
+                                   (StandardTableDefinition/of (mkschema fields)))
         table-info (.build builder)]
     (to-clojure (.create service table-info (into-array BigQuery$TableOption [])))))
 
@@ -217,12 +213,15 @@
 
 
 
-(defn query [service query {:keys [project-id dataset-id] :as dataset} {:keys [max-results dry-run? max-wait-millis use-cache?] :as query-opts}]
+(defn query [service query {:keys [max-results dry-run? max-wait-millis use-cache? default-dataset] :as query-opts}]
   (let [builder (QueryRequest/builder query)]
-    (.defaultDataset builder (DatasetId/of project-id dataset-id))
+    (when default-dataset
+      (let [{:keys [project-id dataset-id]} default-dataset]
+        (.defaultDataset builder (DatasetId/of project-id dataset-id))))
     (when max-results
       (.maxResults builder max-results))
-    (.dryRun builder dry-run?)
+    (when-not (nil? dry-run?)
+      (.dryRun builder dry-run?))
     (when max-wait-millis
       (.maxWaitTime builder max-wait-millis))
     (.useQueryCache builder use-cache?)
@@ -241,21 +240,19 @@
                          :empty    JobInfo$WriteDisposition/WRITE_EMPTY
                          :truncate JobInfo$WriteDisposition/WRITE_TRUNCATE})
 
-(def priorities {:batch       (QueryJobInfo$Priority/BATCH)
-                 :interactive (QueryJobInfo$Priority/INTERACTIVE)})
-
 (defn load-job
-  [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition]} & uris]
-  (let [config-builder (LoadConfiguration/builder (TableId/of project-id dataset-id table-id)
-                                                  ({:json (FormatOptions/json)
-                                                    :csv  (FormatOptions/csv)} (or format :json)))]
-    (.createDisposition config-builder (create-dispositions (or create-disposition :never)))
-    (.writeDisposition config-builder (write-dispositions (or write-disposition :append)))
-    (let [configuration (.build config-builder)
-          job           (.build (LoadJobInfo/builder configuration ^List uris))]
-      (to-clojure (.create service job (into-array BigQuery$JobOption []))))))
+  [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition max-bad-records]} & uris]
+  (let [builder (LoadJobConfiguration/builder (TableId/of project-id dataset-id table-id)
+                                              uris
+                                              ({:json (FormatOptions/json)
+                                                :csv  (FormatOptions/csv)} (or format :json)))]
+    (.createDisposition builder (create-dispositions (or create-disposition :never)))
+    (.writeDisposition builder (write-dispositions (or write-disposition :append)))
+    (.maxBadRecords builder (int (or max-bad-records 0)))
+    (let [load-config (.build builder)]
+      (to-clojure (.create service (.build (JobInfo/builder load-config)) (into-array BigQuery$JobOption []))))))
 
-(defn- user-defined-function
+(defn user-defined-function
   "Creates a User Defined Function suitable for use in BigQuery queries. Can be a Google Cloud Storage uri (e.g. gs://bucket/path), or an inline JavaScript code blob."
   [udf]
   (if (.startsWith udf "gs://")
@@ -263,15 +260,34 @@
     (UserDefinedFunction/inline udf)))
 
 (defn query-job
-  [service query {:keys [create-disposition write-disposition large-results? destination-table use-cache? flatten-results? priority udfs]}]
+  [service query {:keys [create-disposition write-disposition large-results? dry-run? destination-table use-cache? flatten-results? priority udfs]}]
+  (comment (let [{:keys [project-id dataset-id table-id]} destination-table
+                 builder                                  (QueryJobInfo/builder query)]
+             (.createDisposition builder (create-dispositions (or create-disposition :never)))
+             (.writeDisposition builder (write-dispositions (or write-disposition :append)))
+             (.allowLargeResults builder large-results?)
+             (.useQueryCache builder use-cache?)
+             (.flattenResults builder flatten-results?)
+             (when destination-table
+               (.destinationTable builder (TableId/of project-id dataset-id table-id)))
+             (.priority builder (priorities (or priority :batch)))
+             (to-clojure (.create service (.build builder) (into-array BigQuery$JobOption [])))))
+
   (let [{:keys [project-id dataset-id table-id]} destination-table
-        builder                                  (QueryJobInfo/builder query)]
+        priorities {:batch       (QueryJobConfiguration$Priority/BATCH)
+                    :interactive (QueryJobConfiguration$Priority/INTERACTIVE)}
+        builder    (QueryJobConfiguration/builder query)]
     (.createDisposition builder (create-dispositions (or create-disposition :never)))
     (.writeDisposition builder (write-dispositions (or write-disposition :append)))
     (.allowLargeResults builder large-results?)
     (.useQueryCache builder use-cache?)
     (.flattenResults builder flatten-results?)
+    (.priority builder (priorities (or priority :batch)))
+    (when udfs
+      (.userDefinedFunctions builder udfs))
     (when destination-table
       (.destinationTable builder (TableId/of project-id dataset-id table-id)))
-    (.priority builder (priorities (or priority :batch)))
-    (to-clojure (.create service (.build builder) (into-array BigQuery$JobOption [])))))
+    (when-not (nil? dry-run?)
+      (.dryRun builder dry-run?))
+    (let [query-config (.build builder)]
+      (to-clojure (.create service (.build (JobInfo/builder query-config)) (into-array BigQuery$JobOption []))))))
