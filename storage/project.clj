@@ -1,4 +1,4 @@
-(defproject gclouj/storage "0.1.1-SNAPSHOT"
+(defproject gclouj/storage "0.2.0-SNAPSHOT"
   :description "Google Cloud Storage"
   :url "https://github.com/pingles/gclouj"
   :license {:name "Eclipse Public License"
