@@ -280,9 +280,8 @@
   their type. e.g.:
   converts from query results of: {:results ((\"500\")) :schema ({:name \"col\" :type :integer})} into...
   ({\"col\" 500} ...)"
-  [results]
-  (let [{:keys [results schema]} results]
-    (map (coerce-result schema) results)))
+  [{:keys [results schema] :as query-results}]
+  (map (coerce-result schema) results))
 
 (defn job [service {:keys [project-id job-id] :as job}]
   (to-clojure (.getJob service (JobId/of project-id job-id) (into-array BigQuery$JobOption []))))
