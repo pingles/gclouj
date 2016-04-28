@@ -67,9 +67,12 @@
   [key m & {:keys [index]}]
   (let [builder    (Entity/builder key)]
     (doseq [[k v] m]
-      (cond (map? v) (let [attrkey (incomplete-key (.projectId key) (format "%s.%s" (.kind key) k))]
+      (try
+        (cond (map? v) (let [attrkey (incomplete-key (.projectId key) (format "%s.%s" (.kind key) k))]
                        (.set builder k (entity attrkey v)))
-            :else    (.set builder k (property-value v))))
+              :else    (.set builder k (property-value v)))
+        (catch IllegalArgumentException e
+          (throw (ex-info (str "error mapping " k " with value " v) {})))))
     (.build builder)))
 
 (defprotocol ToClojure

@@ -6,6 +6,12 @@
 
 (def project-id "gclouj-datastore")
 
+(defrecord Person [name])
+(deftest record-mapping
+  (let [r (Person. "Paul")
+        e (entity (incomplete-key project-id "Person") r)]
+    (is (= "Paul" (.getString e "FirstName")))))
+
 (deftest entity-mapping
   (let [testbytes (byte-array [1 2 3 4 5])
         e (entity (incomplete-key project-id "Foo")
