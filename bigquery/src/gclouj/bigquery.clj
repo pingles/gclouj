@@ -269,10 +269,11 @@
 (defn- coerce-result
   [schema]
   (let [coercions (map cell-coercions (map :type schema))
-        names     (map :names schema)]
+        names     (map :name schema)]
     (fn [row]
-      (for [[coerce value] (partition 2 (interleave coercions row))]
-        (coerce value)))))
+      (->> (for [[name coerce value] (partition 3 (interleave names coercions row))]
+             [name (coerce value)])
+           (into {})))))
 
 (defn query-results-seq
   "Takes a query result and coerces the results from being raw sequences
@@ -286,9 +287,12 @@
 (defn job [service {:keys [project-id job-id] :as job}]
   (to-clojure (.getJob service (JobId/of project-id job-id) (into-array BigQuery$JobOption []))))
 
-(defn completed? [job]
+(defn successful? [job]
   (and (= :done (get-in job [:status :state]))
        (empty? (get-in job [:status :errors]))))
+
+(defn running? [job]
+  (= :running (get-in job [:status :state])))
 
 (def create-dispositions {:needed JobInfo$CreateDisposition/CREATE_IF_NEEDED
                           :never  JobInfo$CreateDisposition/CREATE_NEVER})
@@ -317,11 +321,13 @@
     (UserDefinedFunction/inline udf)))
 
 (defn query-job
-  [service query {:keys [create-disposition write-disposition large-results? dry-run? destination-table use-cache? flatten-results? priority udfs]}]
-  (let [{:keys [project-id dataset-id table-id]} destination-table
-        priorities {:batch       (QueryJobConfiguration$Priority/BATCH)
+  [service query {:keys [create-disposition write-disposition large-results? dry-run? destination-table default-dataset use-cache? flatten-results? priority udfs]}]
+  (let [priorities {:batch       (QueryJobConfiguration$Priority/BATCH)
                     :interactive (QueryJobConfiguration$Priority/INTERACTIVE)}
         builder    (QueryJobConfiguration/builder query)]
+    (when default-dataset
+      (let [{:keys [project-id dataset-id]} default-dataset]
+        (.defaultDataset builder (DatasetId/of project-id dataset-id))))
     (.createDisposition builder (create-dispositions (or create-disposition :never)))
     (.writeDisposition builder (write-dispositions (or write-disposition :append)))
     (.allowLargeResults builder large-results?)
@@ -331,7 +337,8 @@
     (when udfs
       (.userDefinedFunctions builder udfs))
     (when destination-table
-      (.destinationTable builder (TableId/of project-id dataset-id table-id)))
+      (let [{:keys [project-id dataset-id table-id]} destination-table]
+        (.destinationTable builder (TableId/of project-id dataset-id table-id))))
     (when-not (nil? dry-run?)
       (.dryRun builder dry-run?))
     (let [query-config (.build builder)]
