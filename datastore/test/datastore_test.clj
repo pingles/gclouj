@@ -1,20 +1,27 @@
 (ns datastore-test
-  (:import [com.google.gcloud.datastore.testing LocalGcdHelper]
-           [com.google.gcloud.datastore NullValue Entity Key])
+  (:import [com.google.cloud.datastore.testing LocalDatastoreHelper]
+           [com.google.cloud.datastore NullValue Entity Key])
   (:require [gclouj.datastore :refer :all]
-            [clojure.test :refer :all]))
-
-(def project-id "gclouj-datastore")
+            [clojure.test :refer :all]
+            [clojure.walk :as w]))
 
 (defrecord Person [name])
+
 (deftest record-mapping
   (let [r (Person. "Paul")
-        e (entity (incomplete-key project-id "Person") r)]
-    (is (= "Paul" (.getString e "FirstName")))))
+        e (entity (incomplete-key "project-id" "Person") (w/stringify-keys r))]
+    (is (= "Paul" (.getString e "name")))))
+
+(defn datastore-helper []
+  (let [datastore (doto (LocalDatastoreHelper/create 1.0)
+                    (.start))]
+    {:datastore  datastore
+     :project-id (.projectId datastore)
+     :options    (.options datastore)}))
 
 (deftest entity-mapping
   (let [testbytes (byte-array [1 2 3 4 5])
-        e (entity (incomplete-key project-id "Foo")
+        e (entity (incomplete-key "project-id" "Foo")
                   {"FirstName"    "Paul"
                    "Age"          35
                    "Clojurist"    true
@@ -31,10 +38,8 @@
     (is (= "London"          (-> e (.getEntity "Address") (.getString "City"))))))
 
   (deftest put-and-retrieve-entity
-    (let [port (LocalGcdHelper/findAvailablePort 9900)
-          helper (LocalGcdHelper/start project-id port 1.0)]
-      (let [opts (test-options project-id port)
-            s    (service opts)
+    (let [{:keys [datastore options project-id]} (datastore-helper)]
+      (let [s    (service options)
             t    (transaction s)]
         (let [added         (add-entity t (entity (incomplete-key project-id "Foo")
                                                   {"FirstName" "Paul"}))
@@ -55,13 +60,11 @@
             (is (= "Arthur" (-> (get-entity t added-key added-key2 added-key3)
                                 (last)
                                 (.getString "FirstName")))))))
-      (.stop helper)))
+      (.stop datastore)))
 
 (deftest querying
-  (let [port   (LocalGcdHelper/findAvailablePort 9900)
-        helper (LocalGcdHelper/start project-id port 1.0)
-        s      (-> (test-options project-id port)
-                   (service))]
+  (let [{:keys [datastore options project-id]} (datastore-helper)
+        s      (-> options (service))]
     ;; create some entities to query for
     (let [t (transaction s)]
       (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name" "Paul"
@@ -99,13 +102,11 @@
                                   :order [[:desc "Age"]]
                                   :limit 1}
                                  :query-type :key))))
-    (.stop helper)))
+    (.stop datastore)))
 
 (deftest add-update-delete-entity
-  (let [port   (LocalGcdHelper/findAvailablePort 9900)
-        helper (LocalGcdHelper/start project-id port 1.0)
-        s      (-> (test-options project-id port)
-                   (service))]
+  (let [{:keys [datastore options project-id]} (datastore-helper)
+        s      (-> options (service))]
 
     (let [t     (transaction s)
           added (add-entity t (entity (incomplete-key project-id "QueryFoo") {"Name"     "Paul"
@@ -131,4 +132,4 @@
         (.commit t3)))
 
     (is (= 0 (count (query s {:kind "QueryFoo"}))))
-    (.stop helper)))
+    (.stop datastore)))

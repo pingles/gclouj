@@ -4,14 +4,11 @@
   (:import [gclouj DatastoreOptionsFactory]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [com.google.gcloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
-           [com.google.gcloud AuthCredentials]))
+           [com.google.cloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
+           [com.google.cloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
   (DatastoreOptionsFactory/create project-id namespace (AuthCredentials/createForJson (io/input-stream json-key))))
-
-(defn test-options [project-id port]
-  (DatastoreOptionsFactory/createTestOptions project-id port))
 
 (defn service
   "Creates the Datastore service to be used with other functions. Use
@@ -63,13 +60,14 @@
 
 (defn entity
   "Converts a Clojure map into a Datastore Entity. Recursively converts
-  all values into an entity or value using property-value. "
+  all values into an entity or value using property-value. Keys must all
+  be strings."
   [key m & {:keys [index]}]
   (let [builder    (Entity/builder key)]
     (doseq [[k v] m]
       (try
         (cond (map? v) (let [attrkey (incomplete-key (.projectId key) (format "%s.%s" (.kind key) k))]
-                       (.set builder k (entity attrkey v)))
+                         (.set builder k (entity attrkey v)))
               :else    (.set builder k (property-value v)))
         (catch IllegalArgumentException e
           (throw (ex-info (str "error mapping " k " with value " v) {})))))

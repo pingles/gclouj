@@ -1,7 +1,7 @@
 package gclouj;
 
-import com.google.gcloud.AuthCredentials;
-import com.google.gcloud.datastore.DatastoreOptions;
+import com.google.cloud.AuthCredentials;
+import com.google.cloud.datastore.DatastoreOptions;
 
 public class DatastoreOptionsFactory {
     public static DatastoreOptions create(String projectId, String namespace, AuthCredentials credentials) {
