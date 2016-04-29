@@ -1,4 +1,4 @@
-(defproject gclouj/datastore "0.1.1-SNAPSHOT"
+(defproject gclouj/datastore "0.2.0"
   :description "Google Cloud Datastore"
   :url "https://github.com/pingles/gclouj"
   :license {:name "Eclipse Public License"
