@@ -318,18 +318,6 @@
 
 (defn query-job
   [service query {:keys [create-disposition write-disposition large-results? dry-run? destination-table use-cache? flatten-results? priority udfs]}]
-  (comment (let [{:keys [project-id dataset-id table-id]} destination-table
-                 builder                                  (QueryJobInfo/builder query)]
-             (.createDisposition builder (create-dispositions (or create-disposition :never)))
-             (.writeDisposition builder (write-dispositions (or write-disposition :append)))
-             (.allowLargeResults builder large-results?)
-             (.useQueryCache builder use-cache?)
-             (.flattenResults builder flatten-results?)
-             (when destination-table
-               (.destinationTable builder (TableId/of project-id dataset-id table-id)))
-             (.priority builder (priorities (or priority :batch)))
-             (to-clojure (.create service (.build builder) (into-array BigQuery$JobOption [])))))
-
   (let [{:keys [project-id dataset-id table-id]} destination-table
         priorities {:batch       (QueryJobConfiguration$Priority/BATCH)
                     :interactive (QueryJobConfiguration$Priority/INTERACTIVE)}
