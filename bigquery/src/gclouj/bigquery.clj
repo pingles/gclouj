@@ -1,7 +1,7 @@
 (ns gclouj.bigquery
   (:require [clojure.walk :as walk]
             [clj-time.coerce :as tc])
-  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo]
+  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo ViewDefinition CsvOptions]
            [com.google.common.hash Hashing]
            [java.util List Collections]
            [java.util.concurrent TimeUnit]))
@@ -37,9 +37,11 @@
   (to-clojure [x] {:location          (.location x)
                    :bytes             (.numBytes x)
                    :rows              (.numRows x)
-                   :streaming-buffer  (when-let [sb (.streamingBuffer x)]
-                                        (to-clojure sb))
-                   :schema            (to-clojure (.schema x))})
+                   :streaming-buffer  (when-let [sb (.streamingBuffer x)] (to-clojure sb))
+                   :schema            (when-let [schema (.schema x)] (to-clojure schema))})
+  ViewDefinition
+  (to-clojure [x] {:schema (when-let [schema (.schema x)]
+                             (to-clojure schema))})
   Table
   (to-clojure [x] {:creation-time (.creationTime x)
                    :description   (.description x)
@@ -115,7 +117,11 @@
                (.iterateAll))]
     (map to-clojure (iterator-seq it))))
 
-(defn tables [service {:keys [project-id dataset-id] :as dataset}]
+(defn tables
+  "Returns a sequence of table-ids. For complete table
+  information (schema, location, size etc.) you'll need to also use the
+  `table` function."
+  [service {:keys [project-id dataset-id] :as dataset}]
   (let [it (-> service
                (.listTables (DatasetId/of project-id dataset-id)
                             (into-array BigQuery$TableListOption []))
@@ -302,7 +308,14 @@
                          :truncate JobInfo$WriteDisposition/WRITE_TRUNCATE})
 
 (defn load-job
-  [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition max-bad-records]} & uris]
+  "Loads data from Cloud Storage URIs into the specified table. Options:
+  `create-disposition` controls whether tables are created if
+  necessary, or assume to have been created already (default).
+  `write-disposition`  controls whether data should :append (default),
+  :truncate or :empty to fail if table exists.
+  :format              :json or :csv
+  :schema              sequence describing the table schema.[{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
+  [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition max-bad-records schema]} uris]
   (let [builder (LoadJobConfiguration/builder (TableId/of project-id dataset-id table-id)
                                               uris
                                               ({:json (FormatOptions/json)
@@ -310,6 +323,8 @@
     (.createDisposition builder (create-dispositions (or create-disposition :never)))
     (.writeDisposition builder (write-dispositions (or write-disposition :append)))
     (.maxBadRecords builder (int (or max-bad-records 0)))
+    (when schema
+      (.schema builder (mkschema schema)))
     (let [load-config (.build builder)]
       (to-clojure (.create service (.build (JobInfo/builder load-config)) (into-array BigQuery$JobOption []))))))
 
