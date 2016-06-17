@@ -1,4 +1,4 @@
-(defproject gclouj/bigquery "0.2.2-SNAPSHOT"
+(defproject gclouj/bigquery "0.2.2"
   :description "Google Cloud BigQuery"
   :url "https://github.com/pingles/gclouj"
   :license {:name "Eclipse Public License"
