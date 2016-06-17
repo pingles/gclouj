@@ -1,4 +1,4 @@
-(defproject gclouj/bigquery "0.2.1"
+(defproject gclouj/bigquery "0.2.2-SNAPSHOT"
   :description "Google Cloud BigQuery"
   :url "https://github.com/pingles/gclouj"
   :license {:name "Eclipse Public License"
@@ -6,4 +6,6 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [com.google.cloud/gcloud-java-bigquery "0.2.0"]
                  [clj-time "0.11.0"]]
+  :source-paths ["src/clojure"]
+  :java-source-paths ["src/java"]
   :profiles {:dev {:global-vars {*warn-on-reflection* true}}})

@@ -2,6 +2,7 @@
   (:require [clojure.walk :as walk]
             [clj-time.coerce :as tc])
   (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo ViewDefinition CsvOptions]
+           [gclouj BigQueryOptionsFactory]
            [com.google.common.hash Hashing]
            [java.util List Collections]
            [java.util.concurrent TimeUnit]))
@@ -109,7 +110,9 @@
                    :status     (to-clojure (.status x))}))
 
 (defn service
-  ([] (.service (BigQueryOptions/defaultInstance))))
+  ([] (.service (BigQueryOptions/defaultInstance)))
+  ([{:keys [project-id] :as options}]
+    (.service (BigQueryOptionsFactory/create project-id))))
 
 (defn datasets [service]
   (let [it (-> service
