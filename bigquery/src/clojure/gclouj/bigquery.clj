@@ -1,7 +1,7 @@
 (ns gclouj.bigquery
   (:require [clojure.walk :as walk]
             [clj-time.coerce :as tc])
-  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo ViewDefinition CsvOptions]
+  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo ExtractJobConfiguration LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo ViewDefinition CsvOptions]
            [gclouj BigQueryOptionsFactory]
            [com.google.common.hash Hashing]
            [java.util List Collections]
@@ -330,6 +330,25 @@
       (.schema builder (mkschema schema)))
     (let [load-config (.build builder)]
       (to-clojure (.create service (.build (JobInfo/builder load-config)) (into-array BigQuery$JobOption []))))))
+
+(def extract-format {:json "NEWLINE_DELIMITED_JSON"
+                     :csv  "CSV"
+                     :avro "AVRO"})
+
+(def extract-compression {:gzip "GZIP"
+                          :none "NONE"})
+
+(defn extract-job
+  "Extracts data from BigQuery into a Google Cloud Storage location."
+  [service {:keys [project-id dataset-id table-id] :as table} destination-uri & {:keys [format compression]
+                                                                                 :or   {format      :json
+                                                                                        compression :gzip}}]
+  (let [builder (ExtractJobConfiguration/builder (TableId/of project-id dataset-id table-id)
+                                                 destination-uri)]
+    (.format builder (extract-format format))
+    (.compression builder (extract-compression compression))
+    (let [job (.build builder)]
+      (to-clojure (.create service (.build (JobInfo/builder job)) (into-array BigQuery$JobOption []))))))
 
 (defn user-defined-function
   "Creates a User Defined Function suitable for use in BigQuery queries. Can be a Google Cloud Storage uri (e.g. gs://bucket/path), or an inline JavaScript code blob."
