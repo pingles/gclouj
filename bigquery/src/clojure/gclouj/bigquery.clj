@@ -63,16 +63,19 @@
   (to-clojure [x] {:project-id (.project x)
                    :job-id     (.job x)})
   Field
-  (to-clojure [x] {:name (.name x)
-                   :mode ({Field$Mode/NULLABLE :nullable
-                           Field$Mode/REPEATED :repeated
-                           Field$Mode/REQUIRED :required} (.mode x))
-                   :type ({Field$Type$Value/BOOLEAN   :bool
-                           Field$Type$Value/FLOAT     :float
-                           Field$Type$Value/INTEGER   :integer
-                           Field$Type$Value/RECORD    :record
-                           Field$Type$Value/STRING    :string
-                           Field$Type$Value/TIMESTAMP :timestamp} (.. x type value))})
+  (to-clojure [x] (let [type (.. x type value)]
+                    {:name (.name x)
+                     :mode ({Field$Mode/NULLABLE :nullable
+                             Field$Mode/REPEATED :repeated
+                             Field$Mode/REQUIRED :required} (.mode x))
+                     :type ({Field$Type$Value/BOOLEAN   :bool
+                             Field$Type$Value/FLOAT     :float
+                             Field$Type$Value/INTEGER   :integer
+                             Field$Type$Value/RECORD    :record
+                             Field$Type$Value/STRING    :string
+                             Field$Type$Value/TIMESTAMP :timestamp} type)
+                     :fields (when (= Field$Type$Value/RECORD type)
+                               (map to-clojure (.fields x)))}))
   FieldValue
   (to-clojure [x] (field-value->clojure (.attribute x) x))
   Schema
@@ -119,6 +122,10 @@
                (.listDatasets (into-array BigQuery$DatasetListOption []))
                (.iterateAll))]
     (map to-clojure (iterator-seq it))))
+
+(defn dataset [service {:keys [project-id dataset-id] :as dataset}]
+  (when-let [dataset (.getDataset service (DatasetId/of project-id dataset-id) (into-array BigQuery$DatasetOption []))]
+    (to-clojure dataset)))
 
 (defn tables
   "Returns a sequence of table-ids. For complete table
