@@ -1,6 +1,0 @@
-general:
-	artifacts:
-		- "target/big-replicate-standalone.jar"
-test:
-	override:
-		- make
