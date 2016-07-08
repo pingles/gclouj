@@ -51,10 +51,16 @@
        (iterator-seq)
        (map to-clojure)))
 
-(defn blobs [service bucket]
-  (->> (.iterateAll (.list service bucket (into-array Storage$BlobListOption [])))
+(defn- blobs* [service bucket options]
+  (->> (.iterateAll (.list service bucket (into-array Storage$BlobListOption options)))
        (iterator-seq)
        (map to-clojure)))
+
+(defn blobs
+  ([service bucket]
+   (blobs* service bucket []))
+  ([service bucket prefix]
+   (blobs* service bucket [(Storage$BlobListOption/prefix prefix)])))
 
 
 (defn signed-url
