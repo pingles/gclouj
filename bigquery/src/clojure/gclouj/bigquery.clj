@@ -1,7 +1,7 @@
 (ns gclouj.bigquery
   (:require [clojure.walk :as walk]
             [clj-time.coerce :as tc])
-  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo ExtractJobConfiguration LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo ViewDefinition CsvOptions]
+  (:import [com.google.cloud.bigquery BigQueryOptions BigQuery$DatasetListOption DatasetInfo DatasetId BigQuery$TableListOption StandardTableDefinition TableId BigQuery$DatasetOption BigQuery$TableOption Schema Field Field$Type Field$Mode StandardTableDefinition$StreamingBuffer InsertAllRequest InsertAllRequest$RowToInsert InsertAllResponse BigQueryError BigQuery$DatasetDeleteOption QueryRequest QueryResponse QueryResult JobId Field Field$Type$Value FieldValue FieldValue$Attribute LoadConfiguration BigQuery$JobOption JobInfo$CreateDisposition JobInfo$WriteDisposition JobStatistics JobStatistics$LoadStatistics JobStatus JobStatus$State FormatOptions UserDefinedFunction JobInfo ExtractJobConfiguration LoadJobConfiguration QueryJobConfiguration QueryJobConfiguration$Priority Table BigQuery$QueryResultsOption TableInfo ViewDefinition CsvOptions CopyJobConfiguration]
            [gclouj BigQueryOptionsFactory]
            [com.google.common.hash Hashing]
            [java.util List Collections]
@@ -317,6 +317,12 @@
                          :empty    JobInfo$WriteDisposition/WRITE_EMPTY
                          :truncate JobInfo$WriteDisposition/WRITE_TRUNCATE})
 
+(defn table-id [{:keys [project-id dataset-id table-id]}]
+  (TableId/of project-id dataset-id table-id))
+
+(defn execute-job [service job]
+  (to-clojure (.create service (.build (JobInfo/builder job)) (into-array BigQuery$JobOption []))))
+
 (defn load-job
   "Loads data from Cloud Storage URIs into the specified table. Options:
   `create-disposition` controls whether tables are created if
@@ -326,7 +332,7 @@
   :format              :json or :csv
   :schema              sequence describing the table schema.[{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
   [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition max-bad-records schema]} uris]
-  (let [builder (LoadJobConfiguration/builder (TableId/of project-id dataset-id table-id)
+  (let [builder (LoadJobConfiguration/builder (table-id table)
                                               uris
                                               ({:json (FormatOptions/json)
                                                 :csv  (FormatOptions/csv)} (or format :json)))]
@@ -335,8 +341,7 @@
     (.maxBadRecords builder (int (or max-bad-records 0)))
     (when schema
       (.schema builder (mkschema schema)))
-    (let [load-config (.build builder)]
-      (to-clojure (.create service (.build (JobInfo/builder load-config)) (into-array BigQuery$JobOption []))))))
+    (execute-job service (table-id table))))
 
 (def extract-format {:json "NEWLINE_DELIMITED_JSON"
                      :csv  "CSV"
@@ -350,12 +355,19 @@
   [service {:keys [project-id dataset-id table-id] :as table} destination-uri & {:keys [format compression]
                                                                                  :or   {format      :json
                                                                                         compression :gzip}}]
-  (let [builder (ExtractJobConfiguration/builder (TableId/of project-id dataset-id table-id)
-                                                 destination-uri)]
+  (let [builder (ExtractJobConfiguration/builder (table-id table) destination-uri)]
     (.format builder (extract-format format))
     (.compression builder (extract-compression compression))
-    (let [job (.build builder)]
-      (to-clojure (.create service (.build (JobInfo/builder job)) (into-array BigQuery$JobOption []))))))
+    (execute-job service (.build builder))))
+
+(defn copy-job
+  [service sources destination & {:keys [create-disposition write-disposition]
+                                  :or {create-disposition :needed
+                                       write-disposition :empty}}]
+  (let [builder (CopyJobConfiguration/builder (table-id destination) (map table-id sources))]
+    (.createDisposition builder (create-dispositions create-disposition))
+    (.writeDisposition builder (write-dispositions write-disposition))
+    (execute-job service (.build builder))))
 
 (defn user-defined-function
   "Creates a User Defined Function suitable for use in BigQuery queries. Can be a Google Cloud Storage uri (e.g. gs://bucket/path), or an inline JavaScript code blob."
@@ -385,5 +397,4 @@
         (.destinationTable builder (TableId/of project-id dataset-id table-id))))
     (when-not (nil? dry-run?)
       (.dryRun builder dry-run?))
-    (let [query-config (.build builder)]
-      (to-clojure (.create service (.build (JobInfo/builder query-config)) (into-array BigQuery$JobOption []))))))
+    (execute-job (.build builder))))
