@@ -28,14 +28,16 @@
                    "NilValue"     nil
                    "TestBytes"    testbytes
                    "Intelligence" 50.5
-                   "Address"      {"City" "London"}})]
+                   "Address"      {"City" "London"}
+                   "Tags"         ["Foo" "Bar"]})]
     (is (= "Paul"            (.getString e "FirstName")))
     (is (= 35                (.getLong e "Age")))
     (is (= 50.5              (.getDouble e "Intelligence")))
     (is (true?               (.getBoolean e "Clojurist")))
     (is (instance? NullValue (.getValue e "NilValue")))
     (is (= (seq testbytes)   (seq (.toByteArray (.getBlob e "TestBytes")))))
-    (is (= "London"          (-> e (.getEntity "Address") (.getString "City"))))))
+    (is (= "London"          (-> e (.getEntity "Address") (.getString "City"))))
+    (is (= ["Foo" "Bar"]     (map to-clojure (.getList e "Tags"))))))
 
   (deftest put-and-retrieve-entity
     (let [{:keys [datastore options project-id]} (datastore-helper)]

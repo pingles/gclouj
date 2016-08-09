@@ -4,7 +4,7 @@
   (:import [gclouj DatastoreOptionsFactory]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [com.google.cloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
+           [com.google.cloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob ListValue NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
            [com.google.cloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
@@ -56,6 +56,7 @@
         (or (byte-array? x)
             (instance? InputStream x)
             (instance? ByteBuffer x)) (BlobValue/of (Blob/copyFrom x))
+        (sequential? x)               (ListValue/of (map property-value x))
         :else      x))
 
 (defn entity
@@ -92,6 +93,8 @@
   (to-clojure [value] (.get value))
   StringValue
   (to-clojure [value] (.get value))
+  ListValue
+  (to-clojure [value] (map to-clojure (.get value)))
   EntityValue
   (to-clojure [value] (to-clojure (.get value)))
   FullEntity
