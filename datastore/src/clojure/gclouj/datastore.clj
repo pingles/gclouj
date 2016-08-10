@@ -4,7 +4,7 @@
   (:import [gclouj DatastoreOptionsFactory]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [com.google.cloud.datastore DatastoreOptions Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob ListValue NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
+           [com.google.cloud.datastore DatastoreOptions FullEntity Entity FullEntity DatastoreOptions$DefaultDatastoreFactory Transaction Key IncompleteKey DatastoreBatchWriter EntityValue ValueType StringValue LongValue DoubleValue DateTime DateTimeValue BooleanValue BlobValue Blob ListValue NullValue Value KeyValue FullEntity$Builder Query StructuredQuery$PropertyFilter StructuredQuery$CompositeFilter StructuredQuery$Filter StructuredQuery$OrderBy]
            [com.google.cloud AuthCredentials]))
 
 (defn credential-options [project-id namespace json-key]
@@ -45,7 +45,12 @@
 (defn byte-array? [x]
   (= (Class/forName "[B") (class x)))
 
-(defn property-value [x]
+
+
+
+(declare entity)
+
+(defn to-value [x]
   (cond (nil? x)                      (NullValue. )
         (float? x)                    (DoubleValue/of x)
         (number? x)                   (LongValue/of x)
@@ -56,23 +61,29 @@
         (or (byte-array? x)
             (instance? InputStream x)
             (instance? ByteBuffer x)) (BlobValue/of (Blob/copyFrom x))
-        (sequential? x)               (ListValue/of (map property-value x))
+        (sequential? x)               (ListValue/of (map to-value x))
+        (instance? FullEntity x)      (EntityValue/of x)
+        (map? x)                      (EntityValue/of (entity x))
         :else      x))
+
+(defn- map->entity
+  [builder m]
+  (doseq [[k v] m]
+    (if (map? v)
+      (.set builder k ^FullEntity (entity v))
+      (.set builder k ^Value (to-value v))))
+  builder)
 
 (defn entity
   "Converts a Clojure map into a Datastore Entity. Recursively converts
   all values into an entity or value using property-value. Keys must all
   be strings."
-  [key m & {:keys [index]}]
-  (let [builder    (Entity/builder key)]
-    (doseq [[k v] m]
-      (try
-        (cond (map? v) (let [attrkey (incomplete-key (.projectId key) (format "%s.%s" (.kind key) k))]
-                         (.set builder k (entity attrkey v)))
-              :else    (.set builder k (property-value v)))
-        (catch IllegalArgumentException e
-          (throw (ex-info (str "error mapping " k " with value " v) {})))))
-    (.build builder)))
+  ([m] (let [b (FullEntity/builder)]
+         (.build (map->entity b m))))
+  ([k m] (let [b (cond
+                   (instance? Key k)           (Entity/builder k)
+                   (instance? IncompleteKey k) (FullEntity/builder k))]
+           (.build (map->entity b m)))))
 
 (defprotocol ToClojure
   (to-clojure [x]))
