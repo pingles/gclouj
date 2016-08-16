@@ -324,14 +324,16 @@
   (to-clojure (.create service (.build (JobInfo/builder job)) (into-array BigQuery$JobOption []))))
 
 (defn load-job
-  "Loads data from Cloud Storage URIs into the specified table. Options:
+  "Loads data from Cloud Storage URIs into the specified table.
+  Table argument needs to be a map with project-id, dataset-id and table-id.
+  Options:
   `create-disposition` controls whether tables are created if
   necessary, or assume to have been created already (default).
   `write-disposition`  controls whether data should :append (default),
   :truncate or :empty to fail if table exists.
   :format              :json or :csv
   :schema              sequence describing the table schema.[{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
-  [service {:keys [project-id dataset-id table-id] :as table} {:keys [format create-disposition write-disposition max-bad-records schema]} uris]
+  [service table {:keys [format create-disposition write-disposition max-bad-records schema]} uris]
   (let [builder (LoadJobConfiguration/builder (table-id table)
                                               uris
                                               ({:json (FormatOptions/json)
@@ -351,8 +353,9 @@
                           :none "NONE"})
 
 (defn extract-job
-  "Extracts data from BigQuery into a Google Cloud Storage location."
-  [service {:keys [project-id dataset-id table-id] :as table} destination-uri & {:keys [format compression]
+  "Extracts data from BigQuery into a Google Cloud Storage location.
+   Table argument needs to be a map with project-id, dataset-id and table-id."
+  [service table destination-uri & {:keys [format compression]
                                                                                  :or   {format      :json
                                                                                         compression :gzip}}]
   (let [builder (ExtractJobConfiguration/builder (table-id table) destination-uri)]
