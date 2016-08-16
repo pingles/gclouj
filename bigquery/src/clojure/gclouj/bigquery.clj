@@ -343,7 +343,7 @@
     (.maxBadRecords builder (int (or max-bad-records 0)))
     (when schema
       (.schema builder (mkschema schema)))
-    (execute-job service (table-id table))))
+    (execute-job service (.build builder))))
 
 (def extract-format {:json "NEWLINE_DELIMITED_JSON"
                      :csv  "CSV"
