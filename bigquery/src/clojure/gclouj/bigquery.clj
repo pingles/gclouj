@@ -400,4 +400,4 @@
         (.destinationTable builder (TableId/of project-id dataset-id table-id))))
     (when-not (nil? dry-run?)
       (.dryRun builder dry-run?))
-    (execute-job (.build builder))))
+    (execute-job service (.build builder))))
