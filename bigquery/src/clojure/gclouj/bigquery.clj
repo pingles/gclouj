@@ -35,11 +35,11 @@
                    :estimated-rows    (.estimatedRows x)
                    :oldest-entry-time (.oldestEntryTime x)})
   StandardTableDefinition
-  (to-clojure [x] {:location          (.location x)
-                   :bytes             (.numBytes x)
-                   :rows              (.numRows x)
-                   :streaming-buffer  (when-let [sb (.streamingBuffer x)] (to-clojure sb))
-                   :schema            (when-let [schema (.schema x)] (to-clojure schema))})
+  (to-clojure [x] {:location         (.location x)
+                   :bytes            (.numBytes x)
+                   :rows             (.numRows x)
+                   :streaming-buffer (when-let [sb (.streamingBuffer x)] (to-clojure sb))
+                   :schema           (when-let [schema (.schema x)] (to-clojure schema))})
   ViewDefinition
   (to-clojure [x] {:schema (when-let [schema (.schema x)]
                              (to-clojure schema))})
@@ -64,16 +64,16 @@
                    :job-id     (.job x)})
   Field
   (to-clojure [x] (let [type (.. x type value)]
-                    {:name (.name x)
-                     :mode ({Field$Mode/NULLABLE :nullable
-                             Field$Mode/REPEATED :repeated
-                             Field$Mode/REQUIRED :required} (.mode x))
-                     :type ({Field$Type$Value/BOOLEAN   :bool
-                             Field$Type$Value/FLOAT     :float
-                             Field$Type$Value/INTEGER   :integer
-                             Field$Type$Value/RECORD    :record
-                             Field$Type$Value/STRING    :string
-                             Field$Type$Value/TIMESTAMP :timestamp} type)
+                    {:name   (.name x)
+                     :mode   ({Field$Mode/NULLABLE :nullable
+                               Field$Mode/REPEATED :repeated
+                               Field$Mode/REQUIRED :required} (.mode x))
+                     :type   ({Field$Type$Value/BOOLEAN   :bool
+                               Field$Type$Value/FLOAT     :float
+                               Field$Type$Value/INTEGER   :integer
+                               Field$Type$Value/RECORD    :record
+                               Field$Type$Value/STRING    :string
+                               Field$Type$Value/TIMESTAMP :timestamp} type)
                      :fields (when (= Field$Type$Value/RECORD type)
                                (map to-clojure (.fields x)))}))
   FieldValue
@@ -115,7 +115,7 @@
 (defn service
   ([] (.service (BigQueryOptions/defaultInstance)))
   ([{:keys [project-id] :as options}]
-    (.service (BigQueryOptionsFactory/create project-id))))
+   (.service (BigQueryOptionsFactory/create project-id))))
 
 (defn datasets [service]
   (let [it (-> service
@@ -166,16 +166,16 @@
 
 (defn- mkfield [{:keys [name type description mode fields]}]
   (let [field-type (condp = type
-                     :bool      (Field$Type/bool)
-                     :float     (Field$Type/floatingPoint)
-                     :integer   (Field$Type/integer)
-                     :string    (Field$Type/string)
+                     :bool (Field$Type/bool)
+                     :float (Field$Type/floatingPoint)
+                     :integer (Field$Type/integer)
+                     :string (Field$Type/string)
                      :timestamp (Field$Type/timestamp)
-                     :record    (Field$Type/record ^List (map mkfield fields)))
+                     :record (Field$Type/record ^List (map mkfield fields)))
         builder    (Field/builder name field-type)
-        field-mode ({:nullable  (Field$Mode/NULLABLE)
-                     :repeated  (Field$Mode/REPEATED)
-                     :required  (Field$Mode/REQUIRED)} (or mode :nullable))]
+        field-mode ({:nullable (Field$Mode/NULLABLE)
+                     :repeated (Field$Mode/REPEATED)
+                     :required (Field$Mode/REQUIRED)} (or mode :nullable))]
     (.mode builder field-mode)
     (.build builder)))
 
@@ -189,8 +189,8 @@
   "Fields: sequence of fields representing the table schema.
   e.g. [{:name \"foo\" :type :record :fields [{:name \"bar\" :type :integer}]}]"
   [service {:keys [project-id dataset-id table-id] :as table} fields]
-  (let [builder (TableInfo/builder (TableId/of project-id dataset-id table-id)
-                                   (StandardTableDefinition/of (mkschema fields)))
+  (let [builder    (TableInfo/builder (TableId/of project-id dataset-id table-id)
+                                      (StandardTableDefinition/of (mkschema fields)))
         table-info (.build builder)]
     (to-clojure (.create service table-info (into-array BigQuery$TableOption [])))))
 
@@ -356,8 +356,8 @@
   "Extracts data from BigQuery into a Google Cloud Storage location.
    Table argument needs to be a map with project-id, dataset-id and table-id."
   [service table destination-uri & {:keys [format compression]
-                                                                                 :or   {format      :json
-                                                                                        compression :gzip}}]
+                                    :or   {format      :json
+                                           compression :gzip}}]
   (let [builder (ExtractJobConfiguration/builder (table-id table) destination-uri)]
     (.format builder (extract-format format))
     (.compression builder (extract-compression compression))
@@ -365,8 +365,8 @@
 
 (defn copy-job
   [service sources destination & {:keys [create-disposition write-disposition]
-                                  :or {create-disposition :needed
-                                       write-disposition :empty}}]
+                                  :or   {create-disposition :needed
+                                         write-disposition  :empty}}]
   (let [builder (CopyJobConfiguration/builder (table-id destination) (map table-id sources))]
     (.createDisposition builder (create-dispositions create-disposition))
     (.writeDisposition builder (write-dispositions write-disposition))
@@ -380,7 +380,7 @@
     (UserDefinedFunction/inline udf)))
 
 (defn query-job
-  [service query {:keys [create-disposition write-disposition large-results? dry-run? destination-table default-dataset use-cache? flatten-results? priority udfs]}]
+  [service query {:keys [create-disposition write-disposition large-results? dry-run? destination-table default-dataset use-cache? flatten-results? use-legacy-sql? priority udfs]}]
   (let [priorities {:batch       (QueryJobConfiguration$Priority/BATCH)
                     :interactive (QueryJobConfiguration$Priority/INTERACTIVE)}
         builder    (QueryJobConfiguration/builder query)]
@@ -389,6 +389,7 @@
         (.defaultDataset builder (DatasetId/of project-id dataset-id))))
     (.createDisposition builder (create-dispositions (or create-disposition :never)))
     (.writeDisposition builder (write-dispositions (or write-disposition :append)))
+    (.useLegacySql builder use-legacy-sql?)
     (.allowLargeResults builder large-results?)
     (.useQueryCache builder use-cache?)
     (.flattenResults builder flatten-results?)
