@@ -252,7 +252,7 @@
       (.dryRun builder dry-run?))
     (when max-wait-millis
       (.maxWaitTime builder max-wait-millis))
-    (when-not (nil? use-legacy-sql?)
+    (when-not use-legacy-sql?
       (.useLegacySql builder use-legacy-sql?))
     (.useQueryCache builder use-cache?)
     (let [q (.build builder)]
