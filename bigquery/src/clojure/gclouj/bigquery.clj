@@ -241,7 +241,7 @@
   will be returned. Otherwise, results need to be retrieved separately
   using query-results. Status of the job can be checked using the job
   function, and checking completed?"
-  [service query {:keys [max-results dry-run? max-wait-millis use-cache? default-dataset] :as query-opts}]
+  [service query {:keys [max-results dry-run? max-wait-millis use-cache? use-legacy-sql? default-dataset] :as query-opts}]
   (let [builder (QueryRequest/builder query)]
     (when default-dataset
       (let [{:keys [project-id dataset-id]} default-dataset]
@@ -252,6 +252,8 @@
       (.dryRun builder dry-run?))
     (when max-wait-millis
       (.maxWaitTime builder max-wait-millis))
+    (when-not use-legacy-sql?
+      (.useLegacySql builder use-legacy-sql?))
     (.useQueryCache builder use-cache?)
     (let [q (.build builder)]
       (to-clojure (.query service q)))))
