@@ -278,11 +278,11 @@
         millis  (.toMillis (TimeUnit/SECONDS) seconds)]
     (tc/from-long millis)))
 
-(def cell-coercions {:integer   #(Long/valueOf %)
-                     :bool      #(Boolean/valueOf %)
-                     :float     #(Double/valueOf %)
+(def cell-coercions {:integer   #(when % (Long/valueOf %))
+                     :bool      #(when % (Boolean/valueOf %))
+                     :float     #(when % (Double/valueOf %))
                      :string    identity
-                     :timestamp parse-timestamp})
+                     :timestamp #(when % (parse-timestamp %))})
 
 (defn- coerce-result
   [schema]
